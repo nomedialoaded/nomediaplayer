@@ -33,13 +33,20 @@ if [ "${1:-}" = "--clean" ]; then
 	# lock and socket only (tmpfs, no trash)
 	[ -n "${XDG_RUNTIME_DIR:-}" ] && command rm -rf "$XDG_RUNTIME_DIR/nomediaplayer"
 fi
-VERSION="${VERSION:-1.2.0}"
+VERSION="${VERSION:-1.2.2}"
 BIN="$HOME/.local/bin/nomediaplayer"
 command -v go >/dev/null || { echo "Go is not installed (Linux: your package manager; macOS: brew install go)" >&2; exit 1; }
 CGO=0
 if [ "$OS" = Darwin ]; then
 	# cgo builds the native Now Playing / media-key bridge (internal/macmedia)
-	if xcrun --show-sdk-path >/dev/null 2>&1; then CGO=1
+	if xcrun --show-sdk-path >/dev/null 2>&1; then
+		CGO=1
+		# Go links for macOS 13+; compile the cgo part for the same minimum,
+		# otherwise ld warns "built for newer 'macOS' version (26.0) than
+		# being linked (13.0)" (harmless, but noisy). Same as the Makefile.
+		export MACOSX_DEPLOYMENT_TARGET=13.0
+		export CGO_CFLAGS="${CGO_CFLAGS:--O2 -g} -mmacosx-version-min=13.0"
+		export CGO_LDFLAGS="${CGO_LDFLAGS:--O2 -g} -mmacosx-version-min=13.0"
 	else echo "note: no Xcode Command Line Tools (xcode-select --install); building without Now Playing / media keys"; fi
 fi
 CGO_ENABLED=$CGO go build -trimpath -ldflags="-s -w -X main.version=$VERSION" -o bin/nomediaplayer ./cmd/podmutt

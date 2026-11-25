@@ -96,6 +96,8 @@ nomediaplayer is a fork of [podmutt](https://github.com/susamn/podmutt)
   `~/Library/Application Support/nomediaplayer`, and it tells you when
   `~/.local/bin` is not on your `PATH`.
 - The setup wizard's MPD hint fits the system (`brew install mpd` on macOS).
+- No more `ld: warning: ... built for newer 'macOS' version` lines when
+  installing on macOS: the cgo part is built for macOS 13+, like the Go part.
 - README: a macOS section for testers, with MPD via `brew services` (the
   config links it reads) and how to check the library with `mpc stats`.
 
