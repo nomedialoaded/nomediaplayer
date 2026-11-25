@@ -115,22 +115,20 @@ native-verify: native-preflight
 	$(MAKE) native-macos
 
 native-macos: native-preflight
-	@mkdir -p bin/podmutt.app/Contents/MacOS bin/podmutt.app/Contents/Resources
-	cp packaging/macos/Info.plist bin/podmutt.app/Contents/Info.plist
-	cp packaging/macos/podmutt.icns bin/podmutt.app/Contents/Resources/podmutt.icns
-	CGO_ENABLED=1 $(GO) build -trimpath -ldflags='$(LDFLAGS)' -o bin/podmutt.app/Contents/MacOS/podmutt ./cmd/podmutt
-	codesign --force --sign - bin/podmutt.app
+	@mkdir -p bin/nomediaplayer.app/Contents/MacOS
+	cp packaging/macos/Info.plist bin/nomediaplayer.app/Contents/Info.plist
+	CGO_ENABLED=1 $(GO) build -trimpath -ldflags='$(LDFLAGS)' -o bin/nomediaplayer.app/Contents/MacOS/nomediaplayer ./cmd/podmutt
+	codesign --force --sign - bin/nomediaplayer.app
 
 native-media-test: native-preflight
-	@mkdir -p bin/media-test.app/Contents/MacOS bin/media-test.app/Contents/Resources
+	@mkdir -p bin/media-test.app/Contents/MacOS
 	cp packaging/macos/Info.plist bin/media-test.app/Contents/Info.plist
-	cp packaging/macos/podmutt.icns bin/media-test.app/Contents/Resources/podmutt.icns
-	/usr/libexec/PlistBuddy -c 'Set :CFBundleIdentifier io.gitlab.susamn.podmutt.media-test' bin/media-test.app/Contents/Info.plist
+	/usr/libexec/PlistBuddy -c 'Set :CFBundleIdentifier com.nomedialoaded.nomediaplayer.media-test' bin/media-test.app/Contents/Info.plist
 	@mkdir -p coverage
 	@rm -f coverage/native-macos.out
-	CGO_ENABLED=1 $(GO) test -tags=nativecheck -covermode=atomic -coverpkg=github.com/nomedialoaded/nomediaplayer/internal/macmedia -c -o bin/media-test.app/Contents/MacOS/podmutt ./internal/macmedia
+	CGO_ENABLED=1 $(GO) test -tags=nativecheck -covermode=atomic -coverpkg=github.com/nomedialoaded/nomediaplayer/internal/macmedia -c -o bin/media-test.app/Contents/MacOS/nomediaplayer ./internal/macmedia
 	codesign --force --sign - bin/media-test.app
-	PODMUTT_TEST_NATIVE_MACOS=1 bin/media-test.app/Contents/MacOS/podmutt -test.run '^TestNative' -test.v -test.timeout=30s -test.coverprofile=coverage/native-macos.out
+	PODMUTT_TEST_NATIVE_MACOS=1 bin/media-test.app/Contents/MacOS/nomediaplayer -test.run '^TestNative' -test.v -test.timeout=30s -test.coverprofile=coverage/native-macos.out
 
 .PHONY: native-mpv-coverage-test
 native-mpv-coverage-test:
@@ -145,7 +143,7 @@ native-mpv-coverage-test:
 
 # nml: Linux tarballs and .deb/.rpm packages (nfpm, see packaging/nfpm.yaml).
 NFPM ?= $(GO) run github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.41.0
-PKG_VERSION ?= 1.2.2
+PKG_VERSION ?= 1.2.3
 ARCHES ?= amd64 arm64
 
 dist:

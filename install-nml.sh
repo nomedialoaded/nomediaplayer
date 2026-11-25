@@ -33,7 +33,7 @@ if [ "${1:-}" = "--clean" ]; then
 	# lock and socket only (tmpfs, no trash)
 	[ -n "${XDG_RUNTIME_DIR:-}" ] && command rm -rf "$XDG_RUNTIME_DIR/nomediaplayer"
 fi
-VERSION="${VERSION:-1.2.2}"
+VERSION="${VERSION:-1.2.3}"
 BIN="$HOME/.local/bin/nomediaplayer"
 command -v go >/dev/null || { echo "Go is not installed (Linux: your package manager; macOS: brew install go)" >&2; exit 1; }
 CGO=0
@@ -51,7 +51,20 @@ if [ "$OS" = Darwin ]; then
 fi
 CGO_ENABLED=$CGO go build -trimpath -ldflags="-s -w -X main.version=$VERSION" -o bin/nomediaplayer ./cmd/podmutt
 mkdir -p "$(dirname "$BIN")"
-install -m755 bin/nomediaplayer "$BIN"
+if [ "$OS" = Darwin ] && [ "$CGO" = 1 ]; then
+	# macOS only enables Now Playing and the media keys for a program inside an
+	# .app bundle (it needs a bundle identifier). The bundle is kept out of
+	# sight; ~/.local/bin/nomediaplayer starts the program inside it.
+	APP="$HOME/.local/share/nomediaplayer/nomediaplayer.app"
+	mkdir -p "$APP/Contents/MacOS"
+	cp packaging/macos/Info.plist "$APP/Contents/Info.plist"
+	install -m755 bin/nomediaplayer "$APP/Contents/MacOS/nomediaplayer"
+	codesign --force --sign - "$APP" >/dev/null 2>&1 || echo "note: codesign failed; Now Playing may not work"
+	printf '#!/bin/sh\nexec "%s/Contents/MacOS/nomediaplayer" "$@"\n' "$APP" > "$BIN"
+	chmod 755 "$BIN"
+else
+	install -m755 bin/nomediaplayer "$BIN"
+fi
 if [ "$OS" != Darwin ]; then
 	APPS="$HOME/.local/share/applications"
 	ICONS="$HOME/.local/share/icons/hicolor/scalable/apps"

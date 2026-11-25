@@ -148,8 +148,12 @@ prints to `~/.zshrc` and open a new terminal. Then run `nomediaplayer`.
 - **Podcasts** work without anything else.
 - **Music** needs MPD and your own music files (see below). Without MPD,
   skip the music step in the setup wizard.
-- Now Playing in Control Center and the media keys work for podcasts; music
-  played through MPD does not show up there yet.
+- Now Playing in Control Center and the media keys are meant for podcasts;
+  music played through MPD does not show up there yet. macOS only allows
+  this for a program inside an app bundle, so the installer puts the program
+  in `~/.local/share/nomediaplayer/nomediaplayer.app` and
+  `~/.local/bin/nomediaplayer` starts it from there. Without the Xcode
+  Command Line Tools you get a plain program without Now Playing.
 - Settings live in `~/Library/Application Support/nomediaplayer/`.
 - Update with `git pull && ./install-nml.sh`.
 

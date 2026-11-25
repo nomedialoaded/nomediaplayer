@@ -98,6 +98,9 @@ nomediaplayer is a fork of [podmutt](https://github.com/susamn/podmutt)
 - The setup wizard's MPD hint fits the system (`brew install mpd` on macOS).
 - No more `ld: warning: ... built for newer 'macOS' version` lines when
   installing on macOS: the cgo part is built for macOS 13+, like the Go part.
+- Media keys and Now Playing on macOS: `install-nml.sh` now installs the
+  program inside a small app bundle (`~/.local/share/nomediaplayer/`), because
+  macOS ignores them for a bare program. Before, the keys did nothing.
 - README: a macOS section for testers, with MPD via `brew services` (the
   config links it reads) and how to check the library with `mpc stats`.
 
