@@ -63,7 +63,8 @@ player.
 
 - **Linux.** macOS is in testing (see [macOS](#macos-testing) below);
   Windows does not build.
-- **MPD** (Music Player Daemon) for the music side. nomediaplayer is a client:
+- **MPD** (Music Player Daemon) and **your own music files** for the music
+  side; MPD does not stream. nomediaplayer is a client:
   it tells MPD what to play, and MPD plays it through *its own* audio output
   from *its own* `music_directory`. Run MPD on this computer to hear the
   music here; point nomediaplayer at an MPD on another machine (a server,
@@ -99,6 +100,8 @@ systemctl --user enable --now mpd
 nomediaplayer reads `music_directory` from `~/.config/mpd/mpd.conf` as the
 default music folder. The music folder is only used on this computer for
 lyrics (`.lrc` files) and FLAC → MP3; playing and browsing go through MPD.
+After adding music to that folder, press `R` in nomediaplayer (or run
+`mpc update`) so MPD reads it in. An empty library says so in column 1.
 
 ## Install
 
@@ -143,15 +146,31 @@ If the installer says `~/.local/bin` is not on your `PATH`, add the line it
 prints to `~/.zshrc` and open a new terminal. Then run `nomediaplayer`.
 
 - **Podcasts** work without anything else.
-- **Music** needs MPD and your own music files: `brew install mpd`, create
-  `~/.config/mpd/mpd.conf` as shown above, with
-  `audio_output { type "osx" name "Mac" }` instead of the PipeWire block, and
-  start it with `mpd ~/.config/mpd/mpd.conf`. Without MPD, skip the music step
-  in the setup wizard.
+- **Music** needs MPD and your own music files (see below). Without MPD,
+  skip the music step in the setup wizard.
 - Now Playing in Control Center and the media keys work for podcasts; music
   played through MPD does not show up there yet.
 - Settings live in `~/Library/Application Support/nomediaplayer/`.
 - Update with `git pull && ./install-nml.sh`.
+
+MPD on macOS, run by Homebrew so it starts at login. Create
+`~/.config/mpd/mpd.conf` as shown under [Requirements](#requirements), with
+`audio_output { type "osx" name "Mac" }` instead of the PipeWire block and
+`music_directory` set to the folder with your music files (a network share
+lives under `/Volumes/<name>` and must be mounted before MPD starts). Then:
+
+```sh
+brew install mpd mpc
+mkdir -p ~/.local/share/mpd/playlists ~/.local/state/mpd
+ln -sf ~/.config/mpd/mpd.conf ~/.mpdconf
+mkdir -p "$(brew --prefix)/etc/mpd"
+ln -sf ~/.config/mpd/mpd.conf "$(brew --prefix)/etc/mpd/mpd.conf"
+brew services restart mpd       # macOS has no systemctl
+mpc update && mpc stats         # "Songs: 0" means MPD found no music files
+```
+
+Apple Music streams are not files, and old purchases with DRM (`.m4p`) do not
+play in MPD.
 
 ## First start
 

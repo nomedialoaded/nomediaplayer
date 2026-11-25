@@ -27,6 +27,9 @@ type musicState struct {
 	active  bool
 	started bool
 	artists []string
+	// artistsLoaded is set once MPD answered the artist list, so an empty
+	// library can say so instead of "Loading library…".
+	artistsLoaded bool
 	// source is the selected Library-column ID: "artist:<name>" (MPD) or a
 	// Navidrome list (nd:starred, nd:album:<id>, nd:pl:<id>).
 	source     string
@@ -303,7 +306,7 @@ func (m libraryShell) updateMusic(msg tea.Msg) (libraryShell, tea.Cmd, bool) {
 			return m, nil, true
 		}
 		m.music.err = ""
-		m.music.artists = msg.artists
+		m.music.artists, m.music.artistsLoaded = msg.artists, true
 		m.renderMusic()
 		return m, m.musicSyncSelection(), true
 	case musicCatalog:

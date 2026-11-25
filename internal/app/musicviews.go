@@ -179,9 +179,17 @@ func (ms *musicState) libraryEmpty() string {
 		return ms.lidarrLibraryEmpty()
 	case viewSpeakers:
 		return ms.speakerLibraryEmpty()
+	case viewArtists:
+		if ms.artistsLoaded && len(ms.artists) == 0 {
+			return emptyMPDLibrary
+		}
 	}
 	return ""
 }
+
+// emptyMPDLibrary explains an empty MPD database: MPD only plays files from
+// its own music_directory, it does not stream.
+const emptyMPDLibrary = "MPD library is empty · put music files in MPD's music_directory (mpd.conf) and press R"
 
 // libraryTitle shows the active view and its neighbours, e.g.
 // "Albums ‹t›" in a narrow column.

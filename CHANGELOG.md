@@ -87,6 +87,8 @@ nomediaplayer is a fork of [podmutt](https://github.com/susamn/podmutt)
   album, `a` queues it, `A` queues all the tracks that were found.
 - The player bar says **No current track** on the music side when nothing
   is playing (podcasts keep "No current episode").
+- An **empty MPD library** now says so (put music files in MPD's
+  `music_directory` and press `R`) instead of staying on "Loading library…".
 
 ### macOS (testing)
 - `install-nml.sh` works on macOS: builds with Now Playing / media keys when
@@ -94,7 +96,8 @@ nomediaplayer is a fork of [podmutt](https://github.com/susamn/podmutt)
   `~/Library/Application Support/nomediaplayer`, and it tells you when
   `~/.local/bin` is not on your `PATH`.
 - The setup wizard's MPD hint fits the system (`brew install mpd` on macOS).
-- README: a macOS section for testers.
+- README: a macOS section for testers, with MPD via `brew services` (the
+  config links it reads) and how to check the library with `mpc stats`.
 
 ### Lidarr
 - Search finds albums as well as artists, in Lidarr's relevance order.
