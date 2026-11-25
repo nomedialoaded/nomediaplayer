@@ -1,0 +1,9 @@
+/bin/
+/.cache/
+/config.toml
+/coverage/
+/dist/
+dist/
+.env
+/.scannerwork/
+/.sonar/

@@ -1,0 +1,46 @@
+# nomediaplayer — example config
+# Copy to ~/.config/nomediaplayer/config.toml (chmod 600) and fill in what you use.
+# Every key can also be set as an environment variable NOMEDIAPLAYER_<KEY>
+# (e.g. NOMEDIAPLAYER_NAVIDROME_URL); env wins over this file.
+# Secrets can come from a file: NOMEDIAPLAYER_<KEY>_FILE=/path/to/secret.
+# Leave a URL empty to switch that integration off.
+
+# --- General ---
+start_view = "music"           # "music" or "podcasts"
+theme = "colors"               # colors, catppuccin, solarized-dark, wallpaper, or a file in themes/
+# wallpaper_colors = "~/.cache/matugen/nomediaplayer.json"  # for theme = "wallpaper": JSON with Material
+#                                # colour roles from your shell or matugen (README › Colours that follow your wallpaper)
+icons = "unicode"              # unicode, nerd, plain
+resume_on_start = false        # start playing the last episode on launch
+# country = "nl"               # podcast charts; default from $LANG
+
+# --- MPD (required for music; the music plays where MPD runs) ---
+mpd_host = "127.0.0.1"
+mpd_port = 6600
+# music_dir = "~/Music"        # MPD's music_directory as seen from this computer (lyrics, FLAC → MP3);
+                               # default read from ~/.config/mpd/mpd.conf
+lyrics_online = false          # fetch missing lyrics from lrclib.net (sends artist/title/album)
+
+# --- Podcasts ---
+podcasts = true                # podcast side on/off (M switches)
+podcast_directory = false      # Apple Podcasts search/charts (sends search terms + country)
+podcast_index_key = ""         # Podcast Index: your own free key + secret,
+podcast_index_secret = ""      # by e-mail from https://api.podcastindex.org/
+
+# --- Navidrome / Subsonic (favourites + playlists) ---
+navidrome_url = ""             # e.g. "http://navidrome.lan:4533"
+navidrome_user = ""
+navidrome_password = ""
+
+# --- Lidarr (request artists/albums, follow downloads) ---
+lidarr_url = ""                # e.g. "http://lidarr.lan:8686"
+lidarr_api_key = ""
+flac_to_mp3 = false            # Lidarr FLAC imports → MP3 320, FLAC to the trash
+                               # (needs ffmpeg/ffprobe, gio or trash-put, and a writable music_dir
+                               #  that is the same library as Lidarr's root folder)
+
+# --- Home Assistant / Music Assistant (speakers, hand-off) ---
+ha_url = ""                    # e.g. "http://homeassistant.lan:8123"
+ha_token = ""                  # long-lived access token
+ma_url = ""                    # port 8095, NOT Home Assistant's 8123 (also for the HA add-on)
+ma_token = ""                  # http://<host>:8095 › Settings › Profile (not the HA token)

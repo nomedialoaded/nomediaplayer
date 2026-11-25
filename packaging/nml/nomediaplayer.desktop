@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=nomediaplayer
+GenericName=Muziek en podcasts
+Comment=Muziek (MPD) en podcasts in één kitty-venster · Shift+M wisselt
+Icon=nomediaplayer
+Exec=kitty --class nomediaplayer --title nomediaplayer -- @BIN@
+TryExec=@BIN@
+Terminal=false
+Categories=AudioVideo;Audio;Player;Music;
+Keywords=nomediaplayer;nomedia;media;muziek;music;podcast;podcasts;mpd;podmutt;
+StartupNotify=true
+StartupWMClass=nomediaplayer

@@ -1,0 +1,187 @@
+GO ?= go
+MPV ?= mpv
+COVERAGE_MIN ?= 80
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+LDFLAGS = -X main.version=$(VERSION)
+
+# Apply the deployment target to ALL CGO packages (including runtime/cgo), not
+# just macmedia's #cgo directives. Explicit flags also invalidate cached objects
+# compiled for the host SDK's default minimum. Filter old flags on recursive make.
+ifeq ($(shell uname -s),Darwin)
+export MACOSX_DEPLOYMENT_TARGET := 13.0
+export CGO_CFLAGS := $(filter-out -mmacosx-version-min=%,$(shell $(GO) env CGO_CFLAGS)) -mmacosx-version-min=13.0
+export CGO_CXXFLAGS := $(filter-out -mmacosx-version-min=%,$(shell $(GO) env CGO_CXXFLAGS)) -mmacosx-version-min=13.0
+export CGO_LDFLAGS := $(filter-out -mmacosx-version-min=%,$(shell $(GO) env CGO_LDFLAGS)) -mmacosx-version-min=13.0
+endif
+
+.PHONY: native-macos native-media-test native-preflight native-verify help fmt fmt-check mod-check vet test coverage race vuln-check mpv-test mpris-test check build dist clean install-linux package package-test
+
+help:
+	@printf '%s\n' 'make check    Format, modules, vet, tests, and coverage gate' \
+		'make race     Race-detector tests (native platform, requires C compiler)' \
+		'make vuln-check Scan source and dependencies for known vulnerabilities' \
+		'make mpv-test Real mpv checks with null audio (requires mpv)' \
+		'make mpris-test Private D-Bus protocol checks (requires dbus-daemon)' \
+		'make build    Build bin/nomediaplayer' \
+		'make dist     Linux amd64/arm64 tarballs' \
+		'make package .deb and .rpm (amd64/arm64) in dist/' \
+		'make package-test Install them in Debian/Fedora distrobox' \
+		'make fmt      Format Go source' \
+		'make clean    Remove generated artifacts'
+
+fmt:
+	@gofmt -w $$($(GO) list -f '{{.Dir}}' ./...)
+
+fmt-check:
+	@files=$$(gofmt -l $$($(GO) list -f '{{.Dir}}' ./...)); \
+		if [ -n "$$files" ]; then printf 'Run make fmt:\n%s\n' "$$files"; exit 1; fi
+
+mod-check:
+	$(GO) mod tidy -diff
+
+vet:
+	$(GO) vet ./...
+
+test:
+	$(GO) test -count=1 ./...
+
+# Collect each package's dependency coverage; go test ./... overwrites the
+# shared coverprofile instead of producing a suite-wide aggregate.
+# On macOS native-verify also includes bundled nativecheck and real-mpv tests.
+NATIVE_COVERAGE ?=
+coverage:
+	@mkdir -p coverage/.profiles
+	@set -eu; packages=$$($(GO) list ./...); \
+	  rm -f coverage/.profiles/*.out; \
+	  for package in $$packages; do \
+	    name=$$(printf '%s' "$$package" | tr '/.' '__'); \
+	    coverpkg=$$($(GO) list -deps -f '{{.ImportPath}}' $$package | grep -E '^podmutt(/|$$)'); \
+	    coverpkg=$$(printf '%s\n' "$$coverpkg" | paste -sd, -); \
+	    $(GO) test -count=1 -covermode=atomic -coverpkg=$$coverpkg \
+	      -coverprofile=coverage/.profiles/$$name.out $$package; \
+	  done
+	@if [ -n '$(NATIVE_COVERAGE)' ]; then for profile in $(NATIVE_COVERAGE); do \
+	  test -s "$$profile" || { echo "Native coverage profile missing: $$profile"; exit 1; }; \
+	  done; fi
+	@awk 'FNR == 1 { next } { key = $$1; stmts[key] = $$2; hits[key] += $$3 } \
+		END { print "mode: atomic"; for (key in stmts) print key, stmts[key], hits[key] }' \
+		coverage/.profiles/*.out $(NATIVE_COVERAGE) > coverage/coverage.out
+	$(GO) tool cover -func=coverage/coverage.out
+	$(GO) tool cover -html=coverage/coverage.out -o coverage/index.html
+	@awk -v min='$(COVERAGE_MIN)' 'NR > 1 { statements[$$1] = $$2; if ($$3 > 0) hit[$$1] = 1 } \
+		END { for (block in statements) { total += statements[block]; if (hit[block]) covered += statements[block] } \
+		if (total == 0) { print "No instrumented statements"; exit 1 } \
+		pct = 100 * covered / total; printf "Total coverage: %.2f%%\n", pct; \
+		if (pct < min) { printf "Coverage must be >= %s%%\n", min; exit 1 } }' coverage/coverage.out
+
+race:
+	CGO_ENABLED=1 $(GO) test -race -count=1 ./...
+
+vuln-check:
+	$(GO) run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+mpv-test:
+	PODMUTT_TEST_MPV='$(MPV)' $(GO) test -count=1 -run '^TestRealMPV' -timeout=60s ./internal/player ./internal/app
+
+mpris-test:
+	PODMUTT_TEST_DBUS=1 CGO_ENABLED=1 $(GO) test -race -count=1 -run '^TestPrivateBus' -timeout=60s ./internal/mpris
+
+.PHONY: recovery-test
+recovery-test:
+	$(GO) test -count=1 -run '^TestOfflineWorkflow' -timeout=30s ./internal/app
+	$(GO) test -count=1 -run '^Test(AbruptDeathWAL|FailedUpgrade)' -timeout=30s ./internal/store
+
+check: fmt-check mod-check vet coverage
+
+build:
+	@mkdir -p bin
+	CGO_ENABLED=0 $(GO) build -trimpath -ldflags='$(LDFLAGS)' -o bin/nomediaplayer ./cmd/podmutt
+
+# Public MediaPlayer integration requires Apple SDK + CGO + a bundle identity.
+# Run this executable from a terminal, not Finder; it is still a TUI.
+native-preflight:
+	@test "$$(uname -s)" = Darwin || { echo 'Native media checks require macOS 13+ and Apple SDK; cross-builds do not qualify'; exit 1; }
+	@test "$$(sw_vers -productVersion | cut -d. -f1)" -ge 13 || { echo 'Go 1.27 requires macOS 13+'; exit 1; }
+	xcrun --find clang
+	xcrun --show-sdk-path
+	$(GO) env CGO_CFLAGS CGO_CXXFLAGS CGO_LDFLAGS
+	$(GO) version
+	@printf 'Source: %s\n' '$(VERSION)'
+	@printf 'Native host: '; uname -m; sw_vers
+
+native-verify: native-preflight
+	$(MAKE) native-media-test native-mpv-coverage-test
+	CGO_ENABLED=1 $(MAKE) check race NATIVE_COVERAGE='coverage/native-macos.out coverage/native-mpv-*.out'
+	$(MAKE) native-macos
+
+native-macos: native-preflight
+	@mkdir -p bin/podmutt.app/Contents/MacOS bin/podmutt.app/Contents/Resources
+	cp packaging/macos/Info.plist bin/podmutt.app/Contents/Info.plist
+	cp packaging/macos/podmutt.icns bin/podmutt.app/Contents/Resources/podmutt.icns
+	CGO_ENABLED=1 $(GO) build -trimpath -ldflags='$(LDFLAGS)' -o bin/podmutt.app/Contents/MacOS/podmutt ./cmd/podmutt
+	codesign --force --sign - bin/podmutt.app
+
+native-media-test: native-preflight
+	@mkdir -p bin/media-test.app/Contents/MacOS bin/media-test.app/Contents/Resources
+	cp packaging/macos/Info.plist bin/media-test.app/Contents/Info.plist
+	cp packaging/macos/podmutt.icns bin/media-test.app/Contents/Resources/podmutt.icns
+	/usr/libexec/PlistBuddy -c 'Set :CFBundleIdentifier io.gitlab.susamn.podmutt.media-test' bin/media-test.app/Contents/Info.plist
+	@mkdir -p coverage
+	@rm -f coverage/native-macos.out
+	CGO_ENABLED=1 $(GO) test -tags=nativecheck -covermode=atomic -coverpkg=github.com/nomedialoaded/nomediaplayer/internal/macmedia -c -o bin/media-test.app/Contents/MacOS/podmutt ./internal/macmedia
+	codesign --force --sign - bin/media-test.app
+	PODMUTT_TEST_NATIVE_MACOS=1 bin/media-test.app/Contents/MacOS/podmutt -test.run '^TestNative' -test.v -test.timeout=30s -test.coverprofile=coverage/native-macos.out
+
+.PHONY: native-mpv-coverage-test
+native-mpv-coverage-test:
+	@mkdir -p coverage
+	@rm -f coverage/native-mpv-*.out
+	@set -eu; for package in player app; do \
+	  PODMUTT_TEST_MPV='$(MPV)' CGO_ENABLED=1 $(GO) test -count=1 \
+	    -covermode=atomic -coverpkg=github.com/nomedialoaded/nomediaplayer/internal/$$package \
+	    -coverprofile=coverage/native-mpv-$$package.out -run '^TestRealMPV' \
+	    -timeout=60s ./internal/$$package; \
+	done
+
+# nml: Linux tarballs and .deb/.rpm packages (nfpm, see packaging/nfpm.yaml).
+NFPM ?= $(GO) run github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.41.0
+PKG_VERSION ?= 1.2.0
+ARCHES ?= amd64 arm64
+
+dist:
+	@set -eu; for arch in $(ARCHES); do \
+		mkdir -p "dist/nomediaplayer-linux-$$arch"; \
+		CGO_ENABLED=0 GOOS=linux GOARCH=$$arch $(GO) build -trimpath \
+			-ldflags='-s -w $(LDFLAGS)' -o "dist/nomediaplayer-linux-$$arch/nomediaplayer" ./cmd/podmutt; \
+		cp LICENSE README.md config.example.toml "dist/nomediaplayer-linux-$$arch/"; \
+		tar -czf "dist/nomediaplayer-linux-$$arch.tar.gz" -C dist "nomediaplayer-linux-$$arch"; \
+	done
+
+package:
+	@set -eu; mkdir -p dist; for arch in $(ARCHES); do \
+		CGO_ENABLED=0 GOOS=linux GOARCH=$$arch $(GO) build -trimpath \
+			-ldflags='-s -w -X main.version=$(PKG_VERSION)' -o dist/nomediaplayer ./cmd/podmutt; \
+		for fmt in deb rpm; do \
+			GOARCH=$$arch VERSION=$(PKG_VERSION) $(NFPM) package -f packaging/nfpm.yaml -p $$fmt -t dist/; \
+		done; \
+	done; rm -f dist/nomediaplayer; ls -l dist/*.deb dist/*.rpm
+
+# Install the packages in throwaway Debian and Fedora distrobox containers.
+package-test: package
+	./packaging/linux/distrobox-test.sh
+
+PREFIX ?= /usr/local
+BINDIR ?= $(PREFIX)/bin
+DATADIR ?= $(PREFIX)/share
+
+install: build
+	install -Dm755 bin/nomediaplayer $(DESTDIR)$(BINDIR)/nomediaplayer
+
+install-linux: install
+	install -Dm644 packaging/linux/nomediaplayer.desktop $(DESTDIR)$(DATADIR)/applications/nomediaplayer.desktop
+	install -Dm644 packaging/nml/nomediaplayer.svg $(DESTDIR)$(DATADIR)/icons/hicolor/scalable/apps/nomediaplayer.svg
+	install -Dm644 README.md $(DESTDIR)$(DATADIR)/doc/nomediaplayer/README.md
+	install -Dm644 LICENSE $(DESTDIR)$(DATADIR)/doc/nomediaplayer/copyright
+
+clean:
+	rm -rf bin dist coverage

@@ -1,0 +1,537 @@
+package app
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"slices"
+	"strconv"
+
+	tea "charm.land/bubbletea/v2"
+	"github.com/nomedialoaded/nomediaplayer/internal/library"
+	"github.com/nomedialoaded/nomediaplayer/internal/playback"
+	"github.com/nomedialoaded/nomediaplayer/internal/store"
+	"github.com/nomedialoaded/nomediaplayer/internal/ui"
+)
+
+func cleanTitle(title string) string {
+	plain := library.PlainText(title)
+	if plain == "" {
+		return "Untitled episode"
+	}
+	return plain
+}
+
+func cleanShow(show string) string {
+	plain := library.PlainText(show)
+	if plain == "" {
+		return "Unknown show"
+	}
+	return plain
+}
+
+func formatEpisodeDuration(seconds int64) string {
+	if seconds > 0 {
+		return clock(float64(seconds))
+	}
+	return "--:--"
+}
+
+func episodeItem(episode store.Episode, queued bool) ui.Item {
+	plain := cleanTitle(episode.Title)
+	marker := "[ ] "
+	if episode.Completed {
+		marker = "[x] "
+	}
+	return ui.Item{
+		ID:          strconv.FormatInt(episode.ID, 10),
+		Title:       marker + plain,
+		PlainTitle:  plain,
+		Chapters:    episode.HasChapters(),
+		Channel:     library.PlainText(episode.FeedTitle),
+		Date:        formatPublishedDate(episode.PublishedAt),
+		Duration:    formatEpisodeDuration(episode.DurationSeconds),
+		Queued:      queued,
+		Completed:   episode.Completed,
+		PublishedAt: episode.PublishedAt,
+	}
+}
+
+func previewEpisodeItem(index int, episode store.Episode, showTitle string) ui.Item {
+	plain := cleanTitle(episode.Title)
+	return ui.Item{
+		ID:         fmt.Sprintf("preview:%d", index),
+		Title:      plain,
+		PlainTitle: plain,
+		Chapters:   episode.HasChapters(),
+		Channel:    showTitle,
+		Date:       formatPublishedDate(episode.PublishedAt),
+		Duration:   formatEpisodeDuration(episode.DurationSeconds),
+	}
+}
+
+func queueItem(episode store.Episode) ui.Item {
+	show := cleanShow(episode.FeedTitle)
+	duration := formatEpisodeDuration(episode.DurationSeconds)
+	plainTitle := cleanTitle(episode.Title)
+	pos := clock(episode.PositionSeconds)
+	remains := ui.FormatRemainingPercent(episode.PositionSeconds, float64(episode.DurationSeconds))
+	return ui.Item{
+		ID:              strconv.FormatInt(episode.ID, 10),
+		Title:           fmt.Sprintf("%s · %s · %s/%s", plainTitle, show, pos, duration),
+		PlainTitle:      plainTitle,
+		Chapters:        episode.HasChapters(),
+		Channel:         show,
+		Position:        pos,
+		Duration:        duration,
+		Remains:         remains,
+		PositionSeconds: episode.PositionSeconds,
+		DurationSeconds: float64(episode.DurationSeconds),
+		Completed:       episode.Completed,
+		PublishedAt:     episode.PublishedAt,
+	}
+}
+
+type playerEdited struct {
+	err      error
+	cached   bool
+	volume   bool
+	state    *playback.State
+	enqueued []int64
+}
+type queueConfirmation struct {
+	ids       []int64 // D clears only this captured pending queue
+	episodeID int64   // d/Delete removes only this captured row
+	action    string  // "remove_queue", "clear_queue", "favorite", "unfavorite"
+}
+type queueEdited struct {
+	undo  bool
+	err   error
+	state *playback.State
+}
+
+func clock(seconds float64) string {
+	return ui.FormatDuration(seconds)
+}
+func (m libraryShell) contextEpisode() (store.Episode, bool) {
+	if m.Model.Focus() == ui.Details {
+		if m.detailTarget == nil {
+			return store.Episode{}, false
+		}
+		return m.detailHistory(*m.detailTarget), true
+	}
+	if m.Model.Focus() == ui.Queue {
+		item, ok := m.Model.Selected(ui.Queue)
+		if !ok {
+			return store.Episode{}, false
+		}
+		for _, episode := range m.state.Queue {
+			if item.ID == strconv.FormatInt(episode.ID, 10) {
+				return episode, true
+			}
+		}
+		if current := m.state.Current; current != nil && item.ID == strconv.FormatInt(current.ID, 10) {
+			return *current, true
+		}
+		return store.Episode{}, false
+	}
+	if m.Model.Focus() == ui.Favorites {
+		item, ok := m.Model.Selected(ui.Favorites)
+		if !ok {
+			return store.Episode{}, false
+		}
+		for _, episode := range m.snapshot.Favorites {
+			if item.ID == strconv.FormatInt(episode.ID, 10) {
+				return episode, true
+			}
+		}
+		return store.Episode{}, false
+	}
+	return m.selectedEpisode()
+}
+func (m *libraryShell) playSelected() tea.Cmd {
+	if m.previewActionContext() {
+		return m.previewPlayback(false, false)
+	}
+	episode, selected := m.contextEpisode()
+	if !selected {
+		m.notice = "Select an episode to play"
+		return nil
+	}
+	engine, ctx, id := m.s.playback, m.s.ctx, episode.ID
+	return work(ctx, "Starting playback…", func(ctx context.Context) tea.Msg { return playEpisode(ctx, engine, id, false) })
+}
+
+// Return the actor's authoritative membership with the action, not only on a
+// later streamed update. Failed loads can also leave visible current audio.
+func playEpisode(ctx context.Context, engine *playback.Engine, id int64, cached bool) playerEdited {
+	reply := playerEdited{err: engine.PlayEpisode(ctx, id), cached: cached}
+	state, err := engine.Snapshot(ctx)
+	if err == nil {
+		reply.state = &state
+	} else if reply.err == nil {
+		reply.err = err
+	}
+	return reply
+}
+
+func (m *libraryShell) openDetails() {
+	focus := m.Model.Focus()
+	if focus != ui.Episodes && focus != ui.Queue && focus != ui.Favorites {
+		return
+	}
+	if episode, ok := m.contextEpisode(); ok {
+		m.detailTarget, m.detailFrom = &episode, focus
+		m.Model = m.Model.WithFocus(ui.Details)
+		m.renderDetails()
+	}
+}
+func (m *libraryShell) enqueue(batch bool) tea.Cmd {
+	if !batch && m.Model.Focus() == ui.Details {
+		if episode, ok := m.contextEpisode(); ok && episode.ID > 0 {
+			if m.state.Current != nil && m.state.Current.ID == episode.ID && !m.state.Current.Completed {
+				m.notice = "Already now playing"
+				return nil
+			}
+			for _, item := range m.state.Queue {
+				if item.ID == episode.ID {
+					m.notice = "Already in Up next"
+					return nil
+				}
+			}
+		}
+	}
+	if m.previewActionContext() {
+		return m.previewPlayback(batch, true)
+	}
+	var ids []int64
+	if batch && m.Model.Focus() == ui.Episodes {
+		for _, item := range m.Model.Visible(ui.Episodes) {
+			id, _ := strconv.ParseInt(item.ID, 10, 64)
+			ids = append(ids, id)
+		}
+	} else if !batch && (m.Model.Focus() == ui.Episodes || m.Model.Focus() == ui.Queue || m.Model.Focus() == ui.Details || m.Model.Focus() == ui.Favorites) {
+		if episode, ok := m.contextEpisode(); ok {
+			ids = append(ids, episode.ID)
+		}
+	}
+	if len(ids) == 0 {
+		m.notice = "Select episodes to enqueue"
+		return nil
+	}
+	engine, ctx := m.s.playback, m.s.ctx
+	return work(ctx, "Adding episodes to Up next…", func(ctx context.Context) tea.Msg { return enqueueEpisodes(ctx, engine, ids, false) })
+}
+func enqueueEpisodes(ctx context.Context, engine *playback.Engine, ids []int64, cached bool) playerEdited {
+	err := engine.Enqueue(ctx, ids...)
+	if err != nil {
+		return playerEdited{err: err, cached: cached}
+	}
+	state, err := engine.Snapshot(ctx)
+	return playerEdited{err: err, cached: cached, state: &state, enqueued: ids}
+}
+
+func (m *libraryShell) removeQueueItem() tea.Cmd {
+	if m.Model.Focus() != ui.Queue || m.queueEditing {
+		return nil
+	}
+	episode, ok := m.contextEpisode()
+	if !ok {
+		return nil
+	}
+	selected, _ := m.Model.Selected(ui.Queue)
+	label, state := "Remove episode? y/n", "Pending"
+	if selected.Current {
+		label, state = "Stop & remove? y/n", string(m.state.Status)
+	}
+	m.confirming = &queueConfirmation{episodeID: episode.ID, action: "remove_queue"}
+	m.Model = m.Model.WithDialog(&ui.Dialog{
+		Title:        label,
+		Body:         fmt.Sprintf("%s\n%s\n%s · %s/%s\nProgress/history kept.", cleanTitle(episode.Title), cleanShow(episode.FeedTitle), state, clock(episode.PositionSeconds), formatEpisodeDuration(episode.DurationSeconds)),
+		TruncateBody: true,
+		Hint:         "y remove · n/Esc cancel",
+	})
+	return nil
+}
+
+func (m *libraryShell) openQueueActions() tea.Cmd {
+	if m.Model.Focus() != ui.Queue || m.queueEditing {
+		return nil
+	}
+	episode, ok := m.contextEpisode()
+	if !ok || episode.ID <= 0 {
+		m.notice = "Select an episode in Queue first"
+		return nil
+	}
+	isFav := m.snapshot.FavoriteIDs[episode.ID]
+	action := "1. Mark as favorite"
+	if isFav {
+		action = "1. Already in favorites"
+	}
+	m.confirming = &queueConfirmation{episodeID: episode.ID, action: "favorite"}
+	m.Model = m.Model.WithDialog(&ui.Dialog{
+		Title:       "Episode Actions",
+		Body:        cleanTitle(episode.Title) + "\n" + cleanShow(episode.FeedTitle) + "\n\n" + action,
+		ActionLabel: action,
+		Hint:        "Enter apply · Esc cancel",
+	})
+	return nil
+}
+
+func (m *libraryShell) removeFavorite() tea.Cmd {
+	if m.Model.Focus() != ui.Favorites || m.queueEditing {
+		return nil
+	}
+	episode, ok := m.contextEpisode()
+	if !ok || episode.ID <= 0 {
+		return nil
+	}
+	m.confirming = &queueConfirmation{episodeID: episode.ID, action: "unfavorite"}
+	m.Model = m.Model.WithDialog(&ui.Dialog{
+		Title:        "Remove from favorites? y/n",
+		Body:         cleanTitle(episode.Title) + "\n" + cleanShow(episode.FeedTitle) + "\n\nOnly un-favorites; playback, queue, and history are kept.",
+		TruncateBody: true,
+		Hint:         "y remove · n/Esc cancel",
+	})
+	return nil
+}
+
+func (m *libraryShell) undoQueueRemoval() tea.Cmd {
+	if m.queueEditing {
+		m.queueUndoPending = true
+		return nil
+	}
+	m.queueEditing = true
+	engine, ctx := m.s.playback, m.s.ctx
+	return work(ctx, "Restoring episode to Up next…", func(ctx context.Context) tea.Msg { return queueEdited{undo: true, err: engine.UndoQueueRemoval(ctx)} })
+}
+
+func (m *libraryShell) confirmClearQueue() {
+	if m.Model.Focus() != ui.Queue || len(m.state.Queue) == 0 || m.queueEditing {
+		return
+	}
+	confirmation := &queueConfirmation{action: "clear_queue"}
+	for _, episode := range m.state.Queue {
+		confirmation.ids = append(confirmation.ids, episode.ID)
+	}
+	m.confirming = confirmation
+	m.Model = m.Model.WithDialog(&ui.Dialog{Title: "Confirm Up next edit", Body: "Clear pending episodes? Current playback and history are unchanged.", Hint: "y confirm · Esc/n cancel · q quit"})
+}
+func (m *libraryShell) confirmationKey(key tea.KeyPressMsg) tea.Cmd {
+	k := key.String()
+	if k == "q" || k == "ctrl+c" {
+		return tea.Quit
+	}
+	confirmation := m.confirming
+	if confirmation == nil {
+		return nil
+	}
+
+	if confirmation.action == "favorite" {
+		if k == "esc" || k == "n" {
+			m.confirming = nil
+			m.Model = m.Model.WithDialog(nil)
+			return nil
+		}
+		if k == "enter" || k == "1" || k == "y" {
+			m.confirming = nil
+			m.Model = m.Model.WithDialog(nil)
+			if m.snapshot.FavoriteIDs[confirmation.episodeID] {
+				m.notice = "Already in favorites"
+				return nil
+			}
+			service, ctx, id := m.service, m.s.ctx, confirmation.episodeID
+			return work(ctx, "Adding to favorites…", func(ctx context.Context) tea.Msg {
+				err := service.AddFavorite(ctx, id)
+				return favoriteEdited{added: true, err: err}
+			})
+		}
+		return nil
+	}
+
+	if confirmation.action == "unfavorite" {
+		if k != "y" && k != "esc" && k != "n" {
+			return nil
+		}
+		m.confirming = nil
+		m.Model = m.Model.WithDialog(nil)
+		if k != "y" {
+			m.notice = "Favorites unchanged"
+			return nil
+		}
+		service, ctx, id := m.service, m.s.ctx, confirmation.episodeID
+		return work(ctx, "Removing from favorites…", func(ctx context.Context) tea.Msg {
+			err := service.RemoveFavorite(ctx, id)
+			return favoriteEdited{added: false, err: err}
+		})
+	}
+
+	if k != "y" && k != "esc" && k != "n" {
+		return nil
+	}
+	m.confirming = nil
+	m.Model = m.Model.WithDialog(nil)
+	if k != "y" {
+		m.notice = "Up next unchanged"
+		return nil
+	}
+	engine, ctx := m.s.playback, m.s.ctx
+	if confirmation.episodeID != 0 {
+		m.queueEditing = true
+		return work(ctx, "Removing episode from Queue…", func(ctx context.Context) tea.Msg {
+			reply := queueEdited{err: engine.RemoveQueueItemUndoable(ctx, confirmation.episodeID)}
+			state, err := engine.Snapshot(ctx)
+			if err == nil {
+				reply.state = &state
+			} else if reply.err == nil {
+				reply.err = err
+			}
+			return reply
+		})
+	}
+	return work(ctx, "Clearing Up next…", func(ctx context.Context) tea.Msg { return playerEdited{err: engine.ClearQueue(ctx, confirmation.ids)} })
+}
+
+func (m libraryShell) updatePlaybackEvents(msg tea.Msg) (libraryShell, tea.Cmd, bool) {
+	switch msg := msg.(type) {
+	case chaptersSynced:
+		if msg.err != nil && !errors.Is(msg.err, context.Canceled) {
+			m.recordBackgroundFailure("Update chapters", msg.err)
+		}
+		return m, nil, true
+	case favoriteEdited:
+		var cmd tea.Cmd
+		if msg.err != nil {
+			m.report("Favorites update", msg.err, "")
+		} else if msg.added {
+			m.notice = "Added to favorites · ♥"
+			cmd = m.reload()
+		} else {
+			m.notice = "Removed from favorites"
+			cmd = m.reload()
+		}
+		return m, cmd, true
+	case latestQueued:
+		if msg.err != nil {
+			m.recordBackgroundFailure("Update latest episodes", msg.err)
+		} else {
+			m.clearBackgroundFailure("Update latest episodes")
+		}
+		return m, nil, true
+	case queueEdited:
+		var cmd tea.Cmd
+		rebuild := false
+		if msg.state != nil {
+			if m.state.Current != nil && (msg.state.Current == nil || m.state.Current.ID != msg.state.Current.ID) {
+				cmd = m.reload()
+			}
+			m.shell = m.shell.withPlayback(*msg.state)
+			rebuild = true
+		}
+		m.queueEditing = false
+		pending := m.queueUndoPending
+		m.queueUndoPending = false
+		if errors.Is(msg.err, playback.ErrNoQueueUndo) {
+			m.Model = m.Model.ClearFeedback("Queue edit")
+			m.notice = "Nothing to undo in Up next"
+		} else if msg.err != nil {
+			m.report("Queue edit", msg.err, "")
+		} else if msg.undo {
+			m.Model = m.Model.ClearFeedback("Queue edit")
+			m.notice = "Restored to Up next"
+		} else {
+			m.Model = m.Model.ClearFeedback("Queue edit")
+			m.notice = "Removed from Up next · u undo"
+			if pending {
+				cmd = tea.Batch(cmd, m.undoQueueRemoval())
+			}
+		}
+		if rebuild {
+			m.renderLibrary()
+			cmd = tea.Batch(cmd, m.syncLibrarySelection())
+		} else {
+			m.renderStatus()
+		}
+		return m, cmd, true
+	case playerEdited:
+		var cmd tea.Cmd
+		rebuild := false
+		if msg.state != nil {
+			m.shell = m.shell.withPlayback(*msg.state)
+			rebuild = true
+		}
+		if msg.err == nil && len(msg.enqueued) > 0 {
+			var ids []string
+			for _, id := range msg.enqueued {
+				ids = append(ids, strconv.FormatInt(id, 10))
+			}
+			m.Model = m.Model.WithQueueTail(ids)
+			m.queueSelectID = ids[len(ids)-1]
+		}
+		if msg.cached {
+			cmd = m.reload()
+		}
+		if errors.Is(msg.err, playback.ErrNoEpisode) {
+			m.report("Playback", msg.err, "")
+		} else if msg.err != nil {
+			m.report("Playback", msg.err, "")
+		} else {
+			m.Model = m.Model.ClearFeedback("Playback")
+			m.notice = ""
+			if msg.volume && msg.state != nil {
+				m.notice = fmt.Sprintf("Volume %d%%", msg.state.Volume)
+			}
+		}
+		if rebuild {
+			m.renderLibrary()
+			cmd = tea.Batch(cmd, m.syncLibrarySelection())
+		} else {
+			m.renderStatus()
+		}
+		return m, cmd, true
+	case playbackUpdate:
+		if msg.ok && msg.state.Revision != 0 && msg.state.Revision < m.state.Revision {
+			return m, m.shell.wait(), true
+		}
+		var cmd tea.Cmd
+		changed := msg.ok && msg.state.Current != nil && (m.state.Current == nil || m.state.Current.ID != msg.state.Current.ID)
+		chaptersChanged := msg.ok && msg.state.Current != nil && m.state.Current != nil &&
+			msg.state.Current.ID == m.state.Current.ID && (msg.state.Current.ChaptersJSON != m.state.Current.ChaptersJSON ||
+			msg.state.Current.ChaptersState != m.state.Current.ChaptersState)
+		if chaptersChanged {
+			cmd = tea.Batch(cmd, m.reload())
+		}
+		rebuild := false
+		if msg.ok {
+			id, completed := int64(0), false
+			if msg.state.Current != nil {
+				id, completed = msg.state.Current.ID, msg.state.Current.Completed
+			}
+			if m.lastPlayingID != id || m.lastCompleted != completed {
+				cmd = m.reload()
+			}
+			started := func(episode *store.Episode) bool { return episode != nil && episode.PositionSeconds > 0 }
+			rebuild = chaptersChanged || m.lastPlayingID != id || m.lastCompleted != completed || started(m.state.Current) != started(msg.state.Current) ||
+				currentInQueue(m.state) != currentInQueue(msg.state) ||
+				!slices.EqualFunc(m.state.Queue, msg.state.Queue, func(a, b store.Episode) bool { return a.ID == b.ID })
+			m.lastPlayingID, m.lastCompleted = id, completed
+		}
+		updated, wait := m.shell.Update(msg)
+		m.shell = updated.(shell)
+		m.renderDetails()
+		cmd = tea.Batch(wait, cmd)
+		if rebuild {
+			m.renderLibrary()
+			cmd = tea.Batch(cmd, m.syncLibrarySelection())
+		} else {
+			m.renderStatus()
+		}
+		if changed {
+			m.selectCurrent()
+			m.renderDetails()
+		}
+		return m, cmd, true
+	default:
+		return m, nil, false
+	}
+}

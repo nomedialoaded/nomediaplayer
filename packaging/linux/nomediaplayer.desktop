@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=nomediaplayer
+GenericName=Music and podcast player
+Comment=Keyboard-driven player for your MPD music library and podcasts
+Icon=nomediaplayer
+Exec=nomediaplayer
+TryExec=nomediaplayer
+Terminal=true
+Categories=AudioVideo;Audio;Player;Music;ConsoleOnly;
+Keywords=music;podcast;podcasts;mpd;navidrome;player;tui;

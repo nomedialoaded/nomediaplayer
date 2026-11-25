@@ -1,0 +1,48 @@
+# nfpm: .deb and .rpm for nomediaplayer.
+# Build with: make package (binary in dist/, packages in dist/)
+name: nomediaplayer
+arch: ${GOARCH}
+platform: linux
+version: ${VERSION}
+section: sound
+priority: optional
+maintainer: "nomediaplayer <noreply@nomedialoaded.com>"
+description: |
+  Keyboard-driven terminal player for your own music (MPD) and podcasts.
+  Optional Navidrome, Lidarr and Music Assistant integrations; all settings
+  stay local. Fork of podmutt (MIT).
+vendor: nomedialoaded
+homepage: "https://nomedialoaded.com"
+license: MIT
+depends:
+  - mpv
+  - ca-certificates
+recommends:
+  - mpd
+suggests:
+  - ffmpeg
+contents:
+  - src: dist/nomediaplayer
+    dst: /usr/bin/nomediaplayer
+    file_info:
+      mode: 0755
+  - src: packaging/linux/nomediaplayer.desktop
+    dst: /usr/share/applications/nomediaplayer.desktop
+    file_info:
+      mode: 0644
+  - src: packaging/nml/nomediaplayer.svg
+    dst: /usr/share/icons/hicolor/scalable/apps/nomediaplayer.svg
+    file_info:
+      mode: 0644
+  - src: LICENSE
+    dst: /usr/share/doc/nomediaplayer/copyright
+    file_info:
+      mode: 0644
+  - src: README.md
+    dst: /usr/share/doc/nomediaplayer/README.md
+    file_info:
+      mode: 0644
+  - src: config.example.toml
+    dst: /usr/share/doc/nomediaplayer/config.example.toml
+    file_info:
+      mode: 0644
