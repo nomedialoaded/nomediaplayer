@@ -7,6 +7,8 @@
 A keyboard-driven terminal player for **your own music** (through MPD) and
 **podcasts**, in one window. `M` switches between the two.
 
+Runs on **Linux**; **macOS** is in testing (see [macOS](#macos-testing)).
+
 nomediaplayer is a fork of [podmutt](https://github.com/susamn/podmutt) (MIT).
 It adds the music side and optional integrations, and keeps podmutt's podcast
 player.
@@ -59,8 +61,8 @@ player.
 
 ## Requirements
 
-- **Linux.** Other systems are not supported for now (macOS may build from
-  source, but is untested; Windows does not build).
+- **Linux.** macOS is in testing (see [macOS](#macos-testing) below);
+  Windows does not build.
 - **MPD** (Music Player Daemon) for the music side. nomediaplayer is a client:
   it tells MPD what to play, and MPD plays it through *its own* audio output
   from *its own* `music_directory`. Run MPD on this computer to hear the
@@ -100,6 +102,8 @@ lyrics (`.lrc` files) and FLAC → MP3; playing and browsing go through MPD.
 
 ## Install
 
+On Linux (for macOS, see [macOS](#macos-testing) first):
+
 ```sh
 git clone https://github.com/nomedialoaded/nomediaplayer.git
 cd nomediaplayer
@@ -121,6 +125,33 @@ make build                       # bin/nomediaplayer, nothing installed
 sudo make install-linux          # /usr/local/bin + desktop entry + icon
 make package                     # your own .deb and .rpm in dist/ (needs nfpm)
 ```
+
+## macOS (testing)
+
+nomediaplayer builds and runs on macOS 13 or newer, but has had little
+testing there. Feedback is welcome as a GitHub issue.
+
+```sh
+xcode-select --install          # once; needed for Now Playing and media keys
+brew install go mpv             # mpv plays podcasts
+git clone https://github.com/nomedialoaded/nomediaplayer.git
+cd nomediaplayer
+./install-nml.sh                # binary in ~/.local/bin, no app icon
+```
+
+If the installer says `~/.local/bin` is not on your `PATH`, add the line it
+prints to `~/.zshrc` and open a new terminal. Then run `nomediaplayer`.
+
+- **Podcasts** work without anything else.
+- **Music** needs MPD and your own music files: `brew install mpd`, create
+  `~/.config/mpd/mpd.conf` as shown above, with
+  `audio_output { type "osx" name "Mac" }` instead of the PipeWire block, and
+  start it with `mpd ~/.config/mpd/mpd.conf`. Without MPD, skip the music step
+  in the setup wizard.
+- Now Playing in Control Center and the media keys work for podcasts; music
+  played through MPD does not show up there yet.
+- Settings live in `~/Library/Application Support/nomediaplayer/`.
+- Update with `git pull && ./install-nml.sh`.
 
 ## First start
 
@@ -354,6 +385,13 @@ episodes always come from the show's own RSS feed.
   scripted UI checks (`uv run -q --with pyte python tools/ttydrive.py`).
 
 Neither is needed to use the app.
+
+## Feedback
+
+Bugs, questions and ideas are welcome as
+[GitHub issues](https://github.com/nomedialoaded/nomediaplayer/issues).
+On macOS, please mention your macOS version and whether Now Playing works
+for podcasts.
 
 ## Changelog
 

@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -722,7 +723,7 @@ func (m *libraryShell) applyIntegrations() tea.Cmd {
 func testMPD(ctx context.Context, cfg profile.Config) error {
 	addr := net.JoinHostPort(cfg.MPDHost, strconv.Itoa(cfg.MPDPort))
 	if _, err := mpd.New(addr).Status(ctx); err != nil {
-		return fmt.Errorf("MPD at %s does not answer (%v).\nIs MPD installed and running? (systemctl --user start mpd)", addr, err)
+		return fmt.Errorf("MPD at %s does not answer (%v).\nIs MPD installed and running? (%s)", addr, err, mpdStartHint())
 	}
 	return nil
 }
@@ -941,4 +942,12 @@ func podcastDetail(cfg profile.Config) string {
 		return "RSS/OPML only"
 	}
 	return strings.Join(parts, " + ")
+}
+
+// mpdStartHint is the usual way to start MPD for this user on this OS.
+func mpdStartHint() string {
+	if runtime.GOOS == "darwin" {
+		return "brew install mpd, then: mpd ~/.config/mpd/mpd.conf"
+	}
+	return "systemctl --user start mpd"
 }
