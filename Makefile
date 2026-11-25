@@ -55,7 +55,7 @@ coverage:
 	  rm -f coverage/.profiles/*.out; \
 	  for package in $$packages; do \
 	    name=$$(printf '%s' "$$package" | tr '/.' '__'); \
-	    coverpkg=$$($(GO) list -deps -f '{{.ImportPath}}' $$package | grep -E '^podmutt(/|$$)'); \
+	    coverpkg=$$($(GO) list -deps -f '{{.ImportPath}}' $$package | grep -E '^github.com/nomedialoaded/nomediaplayer(/|$$)'); \
 	    coverpkg=$$(printf '%s\n' "$$coverpkg" | paste -sd, -); \
 	    $(GO) test -count=1 -covermode=atomic -coverpkg=$$coverpkg \
 	      -coverprofile=coverage/.profiles/$$name.out $$package; \
