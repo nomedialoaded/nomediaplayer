@@ -42,7 +42,11 @@ type Service struct {
 func info(s playback.State) metadata {
 	m := metadata{Playing: s.Status == playback.Playing, Paused: s.Status == playback.Paused, CanNext: len(s.Queue) > 0, CanSeek: s.CanSeek}
 	if s.Current != nil {
-		title := []rune(s.Current.Title)
+		text := s.Current.Title
+		if s.Current.FeedTitle != "" { // nml: "Song — Artist" / "Episode — Show"
+			text += " — " + s.Current.FeedTitle
+		}
+		title := []rune(text)
 		m.Title = string(title[:min(256, len(title))])
 		m.Position = s.Current.PositionSeconds
 		m.Duration = float64(s.Current.DurationSeconds)

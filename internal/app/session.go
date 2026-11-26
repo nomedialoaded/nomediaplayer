@@ -3,7 +3,9 @@ package app
 import (
 	"context"
 	"errors"
+	"net"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -11,6 +13,7 @@ import (
 	"github.com/nomedialoaded/nomediaplayer/internal/control"
 	"github.com/nomedialoaded/nomediaplayer/internal/macmedia"
 	"github.com/nomedialoaded/nomediaplayer/internal/mpris"
+	"github.com/nomedialoaded/nomediaplayer/internal/nowplaying"
 	"github.com/nomedialoaded/nomediaplayer/internal/playback"
 	"github.com/nomedialoaded/nomediaplayer/internal/player"
 	"github.com/nomedialoaded/nomediaplayer/internal/profile"
@@ -55,11 +58,14 @@ func withSession(cfg profile.Config, paths profile.Paths, run func(*session) err
 		return err
 	}
 	defer func() { err = errors.Join(err, server.Close()) }()
-	media, mediaError := mpris.Start(ctx, engine)
+	// nml: the desktop media controls follow whatever is audible, podcast or
+	// music (MPD), like the player bar.
+	nowPlaying := nowplaying.NewMPD(engine, net.JoinHostPort(cfg.MPDHost, strconv.Itoa(cfg.MPDPort)))
+	media, mediaError := mpris.Start(ctx, nowPlaying)
 	if media != nil {
 		defer media.Close()
 	}
-	native, nativeError := macmedia.Start(ctx, engine)
+	native, nativeError := macmedia.Start(ctx, nowPlaying)
 	if native != nil {
 		defer native.Close()
 	}

@@ -4,6 +4,17 @@ nomediaplayer is a fork of [podmutt](https://github.com/susamn/podmutt)
 (v1.4.0, MIT) that adds a music player (MPD) next to podcasts. In the app:
 `?` → Changelog.
 
+## v1.3 — 2026-11-26
+
+### Media keys
+- **Music in the media controls**: the desktop media keys and "now playing"
+  (MPRIS on Linux, Now Playing on macOS) now follow music as well as
+  podcasts, whichever is audible, like the player bar; a paused song keeps the
+  keys. Title, artist, length and position; previous/next for music (previous
+  only on Linux for now). No separate mpd-mpris needed.
+- Next only works when there is a next song in the MPD queue (at the last
+  song, playerctl says "No player could handle this command").
+
 ## v1.2 — 2026-11-19
 
 ### Setup and privacy

@@ -28,8 +28,29 @@ func (p *playerMethods) Pause() *dbus.Error     { return p.s.act("pause") }
 func (p *playerMethods) PlayPause() *dbus.Error { return p.s.act("toggle") }
 func (p *playerMethods) Stop() *dbus.Error      { return p.s.act("stop") }
 func (p *playerMethods) Next() *dbus.Error      { return p.s.act("next") }
-func (*playerMethods) Previous() *dbus.Error    { return nil }
-func seek(int64) *dbus.Error                    { return nil }
+
+// Previous: nml — music (MPD through internal/nowplaying) can go back; podcasts
+// have no history, so it stays a no-op there.
+func (p *playerMethods) Previous() *dbus.Error {
+	back, ok := p.s.backend.(interface{ Previous(context.Context) error })
+	if !ok {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(p.s.ctx, actionTimeout)
+	defer cancel()
+	state, err := p.s.backend.Snapshot(ctx)
+	if err != nil {
+		return busError("Failed")
+	}
+	if !isMusic(state) {
+		return nil
+	}
+	if err := back.Previous(ctx); err != nil {
+		return busError("Failed")
+	}
+	return nil
+}
+func seek(int64) *dbus.Error { return nil }
 
 // Export Seek as a closure: a Go method named Seek conflicts with go vet's
 // io.Seeker signature check, while MPRIS requires a different wire signature.

@@ -22,8 +22,12 @@ player.
   or a coloured fallback).
 - Synced lyrics from `.lrc` files next to your music, and optionally from
   lrclib.net.
-- Recently played list, desktop media keys (MPRIS), and a small CLI
-  (`nomediaplayer play|pause|next|status`).
+- Recently played list, and a small CLI (`nomediaplayer play|pause|next|status`).
+- **Media keys and "now playing"** for music *and* podcasts: MPRIS on Linux
+  (media keys, playerctl, GNOME/KDE, Waybar), Now Playing and the media keys
+  on macOS. They follow whatever is audible, like the player bar; a paused
+  song keeps the keys. Previous works for music. You don't need a separate
+  MPD bridge such as mpd-mpris while nomediaplayer runs.
 
 **Optional integrations** (each one off until you set it up)
 - **Navidrome** (or any Subsonic server): playlists and favourites.
@@ -148,9 +152,9 @@ prints to `~/.zshrc` and open a new terminal. Then run `nomediaplayer`.
 - **Podcasts** work without anything else.
 - **Music** needs MPD and your own music files (see below). Without MPD,
   skip the music step in the setup wizard.
-- Now Playing in Control Center and the media keys are meant for podcasts;
-  music played through MPD does not show up there yet. macOS only allows
-  this for a program inside an app bundle, so the installer puts the program
+- Now Playing in Control Center and the media keys work for music and
+  podcasts (previous only for music; macOS doesn't show it there yet).
+  macOS only allows this for a program inside an app bundle, so the installer puts the program
   in `~/.local/share/nomediaplayer/nomediaplayer.app` and
   `~/.local/bin/nomediaplayer` starts it from there. Without the Xcode
   Command Line Tools you get a plain program without Now Playing.

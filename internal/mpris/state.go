@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/godbus/dbus/v5"
+	"github.com/nomedialoaded/nomediaplayer/internal/nowplaying"
 	"github.com/nomedialoaded/nomediaplayer/internal/playback"
 	"github.com/nomedialoaded/nomediaplayer/internal/profile"
 )
@@ -42,6 +43,10 @@ func playerValues(state playback.State) values {
 	if episode := state.Current; episode != nil {
 		metadata["mpris:trackid"] = dbus.MakeVariant(dbus.ObjectPath("/org/nomediaplayer/episode/" + strconv.FormatInt(episode.ID, 10)))
 		metadata["xesam:title"] = dbus.MakeVariant(strings.ReplaceAll(strings.ToValidUTF8(episode.Title, "�"), "\x00", ""))
+		// nml: artist for music, show name for podcasts.
+		if artist := strings.ReplaceAll(strings.ToValidUTF8(episode.FeedTitle, "�"), "\x00", ""); artist != "" {
+			metadata["xesam:artist"] = dbus.MakeVariant([]string{artist})
+		}
 		if episode.DurationSeconds > 0 {
 			metadata["mpris:length"] = dbus.MakeVariant(microseconds(float64(episode.DurationSeconds)))
 		}
@@ -54,7 +59,7 @@ func playerValues(state playback.State) values {
 		"PlaybackStatus": status, "Metadata": metadata, "Position": position,
 		"Rate": 1.0, "MinimumRate": 1.0, "MaximumRate": 1.0, "Volume": 1.0, "LoopStatus": "None", "Shuffle": false,
 		"CanControl": true, "CanPlay": state.Current != nil, "CanPause": state.Current != nil,
-		"CanGoNext": len(state.Queue) > 0, "CanGoPrevious": false, "CanSeek": false,
+		"CanGoNext": len(state.Queue) > 0, "CanGoPrevious": isMusic(state), "CanSeek": false,
 	})
 }
 func variants(source map[string]any) values {
@@ -101,4 +106,9 @@ func jumped(before, after values, elapsed time.Duration) bool {
 		return delta < -1_000_000 || delta > elapsed.Microseconds()+2_000_000
 	}
 	return position != oldPosition
+}
+
+// isMusic: nml — the state comes from MPD (see internal/nowplaying).
+func isMusic(state playback.State) bool {
+	return state.Current != nil && state.Current.ID >= nowplaying.MusicIDBase
 }
