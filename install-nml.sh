@@ -33,7 +33,7 @@ if [ "${1:-}" = "--clean" ]; then
 	# lock and socket only (tmpfs, no trash)
 	[ -n "${XDG_RUNTIME_DIR:-}" ] && command rm -rf "$XDG_RUNTIME_DIR/nomediaplayer"
 fi
-VERSION="${VERSION:-1.3.0}"
+VERSION="${VERSION:-1.3.1}"
 BIN="$HOME/.local/bin/nomediaplayer"
 command -v go >/dev/null || { echo "Go is not installed (Linux: your package manager; macOS: brew install go)" >&2; exit 1; }
 CGO=0

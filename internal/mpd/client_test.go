@@ -44,6 +44,10 @@ func fakeMPD(t *testing.T, answers map[string]string) (string, *[]string) {
 					}
 					inList = false
 					verb, _, _ := strings.Cut(line, " ")
+					if answer := answers[verb]; strings.HasPrefix(answer, "ACK ") {
+						conn.Write([]byte(answer)) // an error ends the reply
+						continue
+					}
 					conn.Write([]byte(answers[verb] + "OK\n"))
 				}
 			}(conn)
@@ -79,6 +83,24 @@ func TestClientParsesAndQuotes(t *testing.T) {
 	for _, want := range []string{`find albumartist "AC/DC \"live\""`, `clear|add "x/1.mp3"|add "x/2.mp3"|play 1|command_list_end`} {
 		if !strings.Contains(joined, want) {
 			t.Fatal("missing command", want, joined)
+		}
+	}
+}
+
+// nml: covers are fetched with a large binarylimit (one reply instead of
+// many 8 KiB chunks); an old MPD that does not know binarylimit still works.
+func TestPictureAsksForLargeChunks(t *testing.T) {
+	for _, limit := range []string{"", "ACK [5@0] {binarylimit} unknown command \"binarylimit\"\n"} {
+		addr, got := fakeMPD(t, map[string]string{
+			"binarylimit": limit,
+			"readpicture": "size: 3\ntype: image/png\nbinary: 3\nabc\n",
+		})
+		data, err := New(addr).Picture(context.Background(), "a/b.mp3")
+		if err != nil || string(data) != "abc" {
+			t.Fatalf("limit %q: data %q err %v", limit, data, err)
+		}
+		if len(*got) < 2 || !strings.HasPrefix((*got)[0], "binarylimit ") || !strings.HasPrefix((*got)[1], "readpicture ") {
+			t.Fatalf("commands: %v", *got)
 		}
 	}
 }

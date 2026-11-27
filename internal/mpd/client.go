@@ -525,6 +525,18 @@ func (c *Client) Picture(ctx context.Context, file string) ([]byte, error) {
 		deadline = d
 	}
 	conn.SetDeadline(deadline)
+	// nml: MPD sends binary data in 8 KiB chunks by default and re-reads the
+	// file for every chunk, which takes seconds per cover on a network share.
+	// Ask for large chunks (MPD 0.22.4+); older servers answer ACK, ignored.
+	if _, err := fmt.Fprintf(conn, "binarylimit %d\n", pictureChunk); err != nil {
+		return nil, err
+	}
+	if _, err := readResponse(rd); err != nil {
+		var proto *ProtocolError
+		if !errors.As(err, &proto) {
+			return nil, err
+		}
+	}
 	for _, command := range []string{"readpicture", "albumart"} {
 		data, err := readBinary(conn, rd, command, file)
 		var proto *ProtocolError
@@ -539,6 +551,9 @@ func (c *Client) Picture(ctx context.Context, file string) ([]byte, error) {
 }
 
 const maxPicture = 16 << 20
+
+// pictureChunk is the binarylimit asked for covers: most fit in one reply.
+const pictureChunk = 4 << 20
 
 // readBinary fetches a chunked binary response ("size", "binary: n" + bytes).
 func readBinary(conn net.Conn, rd *bufio.Reader, command, file string) ([]byte, error) {

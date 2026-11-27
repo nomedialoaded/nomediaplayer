@@ -15,6 +15,12 @@ nomediaplayer is a fork of [podmutt](https://github.com/susamn/podmutt)
 - Next only works when there is a next song in the MPD queue (at the last
   song, playerctl says "No player could handle this command").
 
+### Music
+- **Album covers load much faster** (on average 0.4 s instead of 3–7 s per
+  cover from a network share), so the cover no longer stays empty when
+  loading took longer than the 10 s limit. nomediaplayer asks MPD for the
+  picture in one piece (`binarylimit`) instead of 8 KiB chunks.
+
 ## v1.2 — 2026-11-19
 
 ### Setup and privacy

@@ -143,7 +143,7 @@ native-mpv-coverage-test:
 
 # nml: Linux tarballs and .deb/.rpm packages (nfpm, see packaging/nfpm.yaml).
 NFPM ?= $(GO) run github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.41.0
-PKG_VERSION ?= 1.3.0
+PKG_VERSION ?= 1.3.1
 ARCHES ?= amd64 arm64
 
 dist:
